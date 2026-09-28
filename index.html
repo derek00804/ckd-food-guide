@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>慢性腎臟病飲食快查指南</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    /* 隱藏橫向滾動條 */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen">
+  <div id="app" class="max-w-md mx-auto min-h-screen bg-white shadow-xl flex flex-col pb-8">
+    
+    <!-- 頂部 Header -->
+    <header class="bg-teal-700 text-white p-4 sticky top-0 z-30 shadow-md">
+      <div class="flex items-center justify-between">
+        <h1 class="text-xl font-bold flex items-center gap-2">
+          <span>🥗</span> 腎臟病飲食快查
+        </h1>
+        <span class="text-xs bg-teal-800 px-2 py-0.5 rounded text-teal-200">四大醫院臨床整合版</span>
+      </div>
+      <p class="text-xs text-teal-100 mt-1">和信・中山附醫・高雄榮總・屏東醫院指引</p>
+      
+      <!-- 搜尋列 -->
+      <div class="mt-3 relative">
+        <input 
+          v-model="searchQuery" 
+          type="text" 
+          placeholder="搜尋食材（如：四季豆、豆腐、冬粉、香蕉）..."
+          class="w-full px-4 py-2.5 rounded-lg text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white shadow-inner"
+        />
+        <button 
+          v-if="searchQuery" 
+          @click="searchQuery = ''"
+          class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 text-sm"
+        >✕</button>
+      </div>
+    </header>
+
+    <!-- 狀態篩選 Tabs (紅綠燈) -->
+    <div class="bg-slate-50 p-2 grid grid-cols-5 gap-1 text-xs border-b border-slate-200 sticky top-[108px] z-20 shadow-sm">
+      <button 
+        v-for="tab in statusTabs" 
+        :key="tab.value"
+        @click="selectedStatus = tab.value"
+        :class="selectedStatus === tab.value ? 'bg-white shadow text-teal-800 font-bold border border-slate-200' : 'text-slate-500 hover:bg-slate-200'"
+        class="py-1.5 rounded text-center transition"
+      >
+        {{ tab.label }}
+      </button>
+    </div>
+
+    <!-- 食材大類橫向滑軌 -->
+    <div class="flex overflow-x-auto gap-2 p-3 bg-white border-b border-slate-100 no-scrollbar text-xs sticky top-[152px] z-10 shadow-sm">
+      <button 
+        v-for="cat in categories" 
+        :key="cat.value"
+        @click="selectedCategory = cat.value"
+        :class="selectedCategory === cat.value ? 'bg-teal-600 text-white font-medium shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+        class="px-3 py-1.5 rounded-full whitespace-nowrap transition"
+      >
+        {{ cat.label }}
+      </button>
+    </div>
+
+    <!-- 篩選結果筆數提示 -->
+    <div class="px-4 py-2 text-xs text-slate-400 flex justify-between items-center">
+      <span>顯示 {{ filteredFoods.length }} 項食材</span>
+      <span v-if="searchQuery || selectedStatus !== 'all' || selectedCategory !== 'all'" class="text-teal-600 cursor-pointer" @click="resetFilters">重設條件</span>
+    </div>
+
+    <!-- 食物清單列表 -->
+    <main class="px-3 flex-1 overflow-y-auto space-y-3">
+      <div v-if="filteredFoods.length === 0" class="text-center py-16 text-slate-400">
+        <p class="text-4xl mb-3">🔍</p>
+        <p class="text-sm font-medium">查無符合條件的食材</p>
+        <button @click="resetFilters" class="mt-3 text-xs text-teal-600 underline">清除所有搜尋條件</button>
+      </div>
+
+      <div 
+        v-for="food in filteredFoods" 
+        :key="food.id"
+        class="border rounded-xl p-3.5 bg-white shadow-sm transition hover:shadow-md"
+        :class="getStatusBorder(food.status)"
+      >
+        <!-- 卡片標題與燈號 -->
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <h3 class="font-bold text-base text-slate-900 leading-snug">{{ food.name }}</h3>
+            <span class="text-[11px] text-slate-400 font-medium">{{ getCategoryLabel(food.category) }}</span>
+          </div>
+          <span 
+            class="px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap shadow-sm"
+            :class="getStatusBadge(food.status)"
+          >
+            {{ food.statusText }}
+          </span>
+        </div>
+
+        <!-- 4 項指標標籤 -->
+        <div class="grid grid-cols-4 gap-1.5 my-2.5 text-center text-[11px]">
+          <div class="bg-slate-50 p-1.5 rounded border border-slate-100">
+            <span class="text-slate-400 block text-[10px]">蛋白質</span>
+            <span class="font-semibold text-slate-700">{{ food.tags.protein }}</span>
+          </div>
+          <div class="bg-slate-50 p-1.5 rounded border border-slate-100">
+            <span class="text-slate-400 block text-[10px]">磷 (P)</span>
+            <span class="font-semibold" :class="food.tags.p.includes('高') || food.tags.p.includes('吸收') ? 'text-rose-600' : 'text-slate-700'">{{ food.tags.p }}</span>
+          </div>
+          <div class="bg-slate-50 p-1.5 rounded border border-slate-100">
+            <span class="text-slate-400 block text-[10px]">鉀 (K)</span>
+            <span class="font-semibold" :class="food.tags.k.includes('高') || food.tags.k.includes('致命') ? 'text-rose-600' : 'text-slate-700'">{{ food.tags.k }}</span>
+          </div>
+          <div class="bg-slate-50 p-1.5 rounded border border-slate-100">
+            <span class="text-slate-400 block text-[10px]">鈉 (Na)</span>
+            <span class="font-semibold" :class="food.tags.na.includes('高') || food.tags.na.includes('超標') ? 'text-rose-600' : 'text-slate-700'">{{ food.tags.na }}</span>
+          </div>
+        </div>
+
+        <!-- 特性與避坑指引 -->
+        <div class="bg-slate-50 rounded-lg p-2.5 text-xs space-y-1.5 border border-slate-100">
+          <p class="text-slate-700 leading-relaxed">
+            <strong class="text-slate-900">⚠️ 特性說明：</strong>{{ food.warning }}
+          </p>
+          <p class="text-teal-900 leading-relaxed">
+            <strong class="text-teal-950">💡 食用/料理叮嚀：</strong>{{ food.tips }}
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <!-- 底部常駐安全提醒 -->
+    <footer class="mt-4 mx-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 leading-relaxed">
+      <strong>🚨 守護腎功能三大鐵律：</strong><br>
+      1. 嚴禁任何楊桃製品與低鈉鹽/薄鹽醬油。<br>
+      2. 蔬菜切小滾水大火燙 3 分鐘撈起再炒，絕不喝菜湯。<br>
+      3. 降磷鈣片剝小片隨餐一口飯配一口吞。
+    </footer>
+  </div>
+
+  <script>
+    const { createApp, ref, computed } = Vue;
+
+    createApp({
+      setup() {
+        const searchQuery = ref('');
+        const selectedStatus = ref('all');
+        const selectedCategory = ref('all');
+
+        const statusTabs = [
+          { label: '全部', value: 'all' },
+          { label: '🟢 安心', value: 'safe' },
+          { label: '🟡 限量', value: 'limit' },
+          { label: '🔴 避免', value: 'avoid' },
+          { label: '⛔ 劇毒', value: 'toxic' }
+        ];
+
+        const categories = [
+          { label: '全部種類', value: 'all' },
+          { label: '🍚 主食澱粉', value: 'staple' },
+          { label: '🥩 優質肉蛋', value: 'meat' },
+          { label: '🧊 豆腐黃豆', value: 'soy' },
+          { label: '🥬 蔬菜根莖', value: 'veg' },
+          { label: '🍎 水果果品', value: 'fruit' },
+          { label: '🛢️ 油脂調味', value: 'oil' },
+          { label: '🥣 湯品飲品', value: 'drink' }
+        ];
+
+        // 擴充整合資料庫 (涵蓋四大醫院 handbooks 內容)
+        const foods = ref([
+          // 致命禁忌
+          {
+            id: 1,
+            name: "楊桃（新鮮楊桃、楊桃汁、楊桃乾）",
+            category: "fruit",
+            status: "toxic",
+            statusText: "⛔ 致命劇毒",
+            tags: { protein: "無關", p: "中", k: "高", na: "低" },
+            warning: "含神經毒素 Caramboxin，慢性腎臟病患無法代謝，食用會引起頑固性打嗝、抽搐、意識障礙甚至昏迷致死！",
+            tips: "一口都不能碰，外食綜合果汁務必確認不含楊桃原汁。"
+          },
+          {
+            id: 2,
+            name: "低鈉鹽 / 薄鹽醬油 / 無鹽醬油 / 健康美味鹽",
+            category: "oil",
+            status: "toxic",
+            statusText: "⛔ 致命劇毒",
+            tags: { protein: "無", p: "無", k: "致命爆表", na: "偏低" },
+            warning: "以『氯化鉀』取代氯化鈉，腎衰竭患者食用一茶匙即可誘發致命心律不整與心臟驟停！",
+            tips: "家中廚房應全數清除，調味改用普通食鹽或純釀醬油少許提味即可。"
+          },
+
+          // 主食類
+          {
+            id: 101,
+            name: "冬粉 / 純米粉 / 西谷米",
+            category: "staple",
+            status: "safe",
+            statusText: "🟢 安心首選",
+            tags: { protein: "極微(純熱量)", p: "極低", k: "極低", na: "低" },
+            warning: "純澱粉低氮食物，不製造含氮廢物，能有效防止自體肌肉分解產生尿毒。",
+            tips: "可直接取代正餐白飯（如油炒冬粉、炒米粉），或做成甜湯點心補足全天熱量。"
+          },
+          {
+            id: 102,
+            name: "澄粉 / 太白粉 / 地瓜粉 / 蓮藕粉",
+            category: "staple",
+            status: "safe",
+            statusText: "🟢 安心首選",
+            tags: { protein: "近零蛋白", p: "極低", k: "極低", na: "低" },
+            warning: "低蛋白純熱量來源，是製作低蛋白點心（如水晶餃皮、圓仔、涼糕）的基底。",
+            tips: "沖泡藕粉糊或自製粉圓補足熱量，有水腫限水者需注意沖泡水份。"
+          },
+          {
+            id: 103,
+            name: "白米飯 / 白饅頭 / 白吐司 / 白麵條",
+            category: "staple",
+            status: "safe",
+            statusText: "🟢 適量食用",
+            tags: { protein: "低生理價", p: "低", k: "低", na: "正常" },
+            warning: "精緻白澱粉的磷與鉀遠低於粗糧雜糧，是腎病患者最安全的主食選擇。",
+            tips: "依體重查表限額（60kg 約 1.5～2 碗飯/天），吃不飽可用冬粉取代主食增加飽足感。"
+          },
+          {
+            id: 104,
+            name: "麵線 / 油麵 / 泡麵 / 蘇打餅乾",
+            category: "staple",
+            status: "avoid",
+            statusText: "🔴 避免食用",
+            tags: { protein: "低生理價", p: "中高", k: "中", na: "超標" },
+            warning: "製程中添加大量食鹽與小蘇打（碳酸氫鈉），鈉含量嚴重超標，引發水腫與高血壓。",
+            tips: "主食改吃白飯或自製麵條，切忌吃泡麵、油麵與鹹餅乾。"
+          },
+          {
+            id: 105,
+            name: "糙米 / 燕麥片 / 五穀米 / 蕎麥 / 胚芽米",
+            category: "staple",
+            status: "avoid",
+            statusText: "🔴 避免食用",
+            tags: { protein: "劣質蛋白", p: "極高", k: "極高", na: "低" },
+            warning: "一般人的養生品，腎臟病的大地雷！磷與鉀極高且屬劣質蛋白，代謝廢物最多。",
+            tips: "千萬不可喝燕麥奶或吃五穀飯，主食全面改回白米飯與冬粉。"
+          },
+
+          // 優質肉蛋魚類
+          {
+            id: 201,
+            name: "雞蛋純蛋白",
+            category: "meat",
+            status: "safe",
+            statusText: "🟢 安心首選",
+            tags: { protein: "最高生理價", p: "極低", k: "低", na: "低" },
+            warning: "人體利用率最高的蛋白質，且完全不含蛋黃的密集有機磷，無負擔。",
+            tips: "可蒸蛋清、以植物油煎蛋白，或做成蛋白肉絲湯（只吃料不喝湯）。"
+          },
+          {
+            id: 202,
+            name: "新鮮肉魚（雞肉、豬肉、牛肉、鮮魚）",
+            category: "meat",
+            status: "safe",
+            statusText: "🟢 適量食用",
+            tags: { protein: "高生理價優質", p: "中(需配藥)", k: "中(燙過減半)", na: "低" },
+            warning: "新鮮原塊肉提供組織修復必需胺基酸，但含磷量高，須嚴格限量並隨餐搭鈣片。",
+            tips: "每日 2～4 兩（約 3～5 份，每份 3 指寬），切小塊先滾水川燙可逼出鉀，油煎炒熟食用。"
+          },
+          {
+            id: 203,
+            name: "生魚片 / 帶血生肉",
+            category: "meat",
+            status: "avoid",
+            statusText: "🔴 避免食用",
+            tags: { protein: "優質蛋白", p: "中", k: "極高", na: "低" },
+            warning: "生魚生肉未經烹煮川燙，鉀離子完全留存，且未透析患者免疫弱，生食易感染。",
+            tips: "魚肉必須徹底煮熟，魚湯倒掉只吃魚肉。"
+          },
+          {
+            id: 204,
+            name: "雞蛋蛋黃 / 魚卵 / 烏魚子 / 蟹黃蝦膏",
+            category: "meat",
+            status: "avoid",
+            statusText: "🔴 避免食用",
+            tags: { protein: "高生理價", p: "密集特高", k: "中", na: "中高" },
+            warning: "卵黃類細胞核密集，含有極高濃度有機磷，食用極易引起血磷飆升與皮膚搔癢。",
+            tips: "吃蛋請徹底去蛋黃只吃蛋白；海鮮去頭去膏只吃白肉。"
+          },
+          {
+            id: 205,
+            name: "動物內臟（豬肝、豬腎腰子、豬腸、雞胗）",
+            category: "meat",
+            status: "avoid",
+            statusText: "🔴 絕對禁食",
+            tags: { protein: "高生理價", p: "特高", k: "中高", na: "中" },
+            warning: "磷與普林含量極為驚人，會造成急性高血磷與副甲狀腺機能亢進。",
+            tips: "拒絕任何內臟料理（麻油腰花、下水湯、豬肝粥）。"
+          },
+          {
+            id: 206,
+            name: "加工肉品（香腸、培根、火腿、貢丸、肉鬆）",
+            category: "meat",
+            status: "avoid",
+            statusText: "🔴 絕對禁食",
+            tags: { protein: "加工混合", p: "無機磷100%", k: "中", na: "超標" },
+            warning: "添加大量無機磷酸鹽（人體 100% 吸收）與高鈉鹽分，加重水腫與骨病變。",
+            tips: "早餐絕不夾培根火腿，不吃肉鬆肉乾與火鍋丸餃，只吃新鮮原肉。"
+          },
+          {
+            id: 207,
+            name: "豬血 / 鴨血（純天然原味）",
+            category: "meat",
+            status: "safe",
+            statusText: "🟢 適量食用",
+            tags: { protein: "蛋白質偏低", p: "低", k: "低", na: "低" },
+            warning: "血製品水分高達 90%，磷含量遠低於肉類與內臟，手冊列為可適量選用的低磷食材。",
+            tips: "切塊川燙後以植物油炒韭菜或蔥蒜；嚴禁吃浸泡在重鹽辣油中的麻辣鴨血。"
+          },
+
+          // 豆腐豆類
+          {
+            id: 301,
+            name: "板豆腐 / 嫩豆腐 / 無糖豆漿",
+            category: "soy",
+            status: "safe",
+            statusText: "🟢 適量食用",
+            tags: { protein: "高生理價植物", p: "中", k: "中", na: "低" },
+            warning: "黃豆蛋白為高生理價優質蛋白質，非劣質豆，可替代動物肉類份額。",
+            tips: "算在每日蛋白質額度內（1塊傳統豆腐＝1兩肉），推薦油煎或快炒，避免長滷。"
+          },
+          {
+            id: 302,
+            name: "四季豆 / 敏豆 / 荷蘭豆 / 菜豆",
+            category: "soy",
+            status: "avoid",
+            statusText: "🔴 避免食用",
+            tags: { protein: "劣質豆蛋白", p: "中高", k: "中高", na: "低" },
+            warning: "常被誤認為蔬菜！本質屬莢豆類低生物價蛋白質，多吃會製造大量含氮尿毒素。",
+            tips: "切勿當作普通蔬菜放開大吃，不可拿來做炒青菜主菜。"
+          },
+          {
+            id: 303,
+            name: "黃豆芽 / 綠豆芽",
+            category: "soy",
+            status: "avoid",
+            statusText: "🔴 避免食用",
+            tags: { protein: "劣質豆蛋白", p: "中高", k: "中高", na: "低" },
+            warning: "豆類發芽本質仍屬豆類低生物價蛋白，代謝廢物高，加重腎排泄負擔。",
+            tips: "熱炒配菜盡量改用高麗菜或瓜類，避免將豆芽菜作主力蔬菜。"
+          },
+          {
+            id: 304,
+            name: "紅豆 / 綠豆 / 黑豆 / 蠶豆 / 皇帝豆",
+            category: "soy",
+            status: "avoid",
+            statusText: "🔴 絕對禁食",
+            tags: { protein: "劣質蛋白", p: "極高", k: "極高", na: "低" },
+            warning: "非黃豆之澱粉豆類，集『低利用率蛋白＋高磷＋高鉀』三大地雷於一身。",
+            tips: "不吃紅豆湯、綠豆湯、黑豆水，不吃皇帝豆配菜。"
+          },
+          {
+            id: 305,
+            name: "麵筋 / 麵腸 / 麵輪 / 烤麩",
+            category: "soy",
+            status: "avoid",
+            statusText: "🔴 絕對禁食",
+            tags: { protein: "純小麥劣質", p: "中高", k: "低中", na: "麵筋罐頭高" },
+            warning: "純植物性劣質蛋白質，人體利用率極低，代謝後產生最高濃度的尿毒素與肌酸酐。",
+            tips: "素食者最常踩的陷阱，素肉、麵腸、麵筋製品一律不碰。"
+          },
+
+          // 蔬菜根莖類
+          {
+            id: 401,
+            name: "高麗菜 / 大白菜 / 包心白菜 / 洋蔥",
+            category: "veg",
+            status: "safe",
+            statusText: "🟢 安心食用",
+            tags: { protein: "極微", p: "低", k: "燙後極低", na: "低" },
+            warning: "淺色葉菜天然含鉀量較低且易溶於沸水，川燙瀝乾後是最安全的蔬菜來源。",
+            tips: "必須切段後用『大滾水燙 3 分鐘撈起瀝乾』，再下鍋用好油炒，菜湯倒掉不喝。"
+          },
+          {
+            id: 402,
+            name: "冬瓜 / 絲瓜 / 小黃瓜 / 大黃瓜 / 蒲瓜(瓠瓜)",
+            category: "veg",
+            status: "safe",
+            statusText: "🟢 安心食用",
+            tags: { protein: "極微", p: "低", k: "燙後極低", na: "低" },
+            warning: "瓜類水分含量高、鉀磷含量低，是腎臟病最佳配菜。",
+            tips: "去皮切塊滾水燙過後，用植物油清炒或薑絲快炒，湯水不喝。"
+          },
+          {
+            id: 403,
+            name: "紅蘿蔔 / 芹菜",
+            category: "veg",
+            status: "limit",
+            statusText: "🟡 謹慎限量",
+            tags: { protein: "極微", p: "低", k: "偏高", na: "偏高" },
+            warning: "含鈉量與含鉀量天生偏高，大量食用易加重水腫與血鉀。",
+            tips: "切細絲滾水川燙撈起，僅可作少量配色提味（如涼拌粉皮配料），切忌整碗吃或燉湯。"
+          },
+          {
+            id: 404,
+            name: "菠菜 / 空心菜 / 莧菜 / 芥菜 / 青花菜",
+            category: "veg",
+            status: "avoid",
+            statusText: "🔴 避免食用",
+            tags: { protein: "微量", p: "中", k: "極高", na: "低" },
+            warning: "深綠色蔬菜天生鉀密度極高，即使水煮也難完全釋出，極易誘發高血鉀與心律不整。",
+            tips: "買菜請優先挑淺色蔬菜。非吃不可時，務必滾水大火燙熟撈起，嚴禁生吃。"
+          },
+          {
+            id: 405,
+            name: "竹筍 / 桂竹筍 / 竹筍湯",
+            category: "veg",
+            status: "avoid",
+            statusText: "🔴 避免食用",
+            tags: { protein: "微量", p: "低", k: "極高", na: "低" },
+            warning: "纖維粗硬不易溶出鉀，而煮筍湯時鉀全溶入湯中，竹筍湯是高鉀致命重災區。",
+            tips: "禁喝竹筍排骨湯，少吃筍料理。"
+          },
+          {
+            id: 406,
+            name: "香菇 / 金針菇 / 草菇 / 洋菇 / 木耳",
+            category: "veg",
+            status: "avoid",
+            statusText: "🔴 避免食用",
+            tags: { protein: "微量", p: "高(不易去)", k: "極高", na: "低" },
+            warning: "菇菌類細胞壁堅韌，兼具高鉀與高有機磷，滾水川燙亦難以有效去磷。",
+            tips: "各種菇類火鍋料、乾香菇、木耳露皆應避免食用。"
+          },
+          {
+            id: 407,
+            name: "紫菜 / 海帶 / 海苔",
+            category: "veg",
+            status: "avoid",
+            statusText: "🔴 避免食用",
+            tags: { protein: "微量", p: "高", k: "極高", na: "高" },
+            warning: "藻類鉀、磷、鈉三項指標全高，紫菜蛋花湯或海帶滷味極具殺傷力。",
+            tips: "不喝紫菜湯、不吃海苔醬、不吃海帶。"
+          },
+          {
+            id: 408,
+            name: "榨菜 / 酸菜 / 泡菜 / 醬菜 / 雪裡紅",
+            category: "veg",
+            status: "avoid",
+            statusText: "🔴 絕對禁食",
+            tags: { protein: "極微", p: "中", k: "高", na: "嚴重超標" },
+            warning: "高鹽醃漬直接造成血壓飆高、下肢嚴重水腫、肺積水與心臟衰竭。",
+            tips: "外食牛肉麵不加酸菜，不吃任何醃漬醬菜小菜。"
+          },
+          {
+            id: 409,
+            name: "生菜沙拉 / 生機精力湯",
+            category: "veg",
+            status: "avoid",
+            statusText: "🔴 絕對禁食",
+            tags: { protein: "微量", p: "中", k: "100%全吸收", na: "低" },
+            warning: "生菜完全未經滾水川燙，高濃度水溶性鉀離子被 100% 吃下肚，極易突發致命心跳驟停。",
+            tips: "所有蔬菜必須加熱川燙瀝乾，絕對禁止生機飲食、生菜沙拉與蔬果汁。"
+          },
+
+          // 水果類
+          {
+            id: 501,
+            name: "蘋果 / 水梨 / 蓮霧 / 葡萄 / 新鮮鳳梨",
+            category: "fruit",
+            status: "safe",
+            statusText: "🟢 限量食用",
+            tags: { protein: "微量", p: "低", k: "低至中", na: "低" },
+            warning: "相對安全的中低鉀水果，但水果無法燙煮去鉀，仍需嚴格控制全天總量。",
+            tips: "每日嚴格限制 1～2 份（約 1～2 個拳頭大），用牙齒咀嚼吃果肉，絕不打汁。"
+          },
+          {
+            id: 502,
+            name: "香蕉 / 芭蕉 / 奇異果 / 釋迦 / 榴槤",
+            category: "fruit",
+            status: "avoid",
+            statusText: "🔴 避免食用",
+            tags: { protein: "微量", p: "低中", k: "極高爆表", na: "低" },
+            warning: "高鉀熱帶甜果，一根香蕉或一顆奇異果即能讓洗腎與未透析患者血鉀破表。",
+            tips: "嚴格忌口，探病家屬切勿贈送此類高鉀水果盒。"
+          },
+          {
+            id: 503,
+            name: "香瓜 / 哈密瓜 / 太陽瓜",
+            category: "fruit",
+            status: "avoid",
+            statusText: "🔴 避免食用",
+            tags: { protein: "微量", p: "低", k: "極高", na: "低" },
+            warning: "甜瓜類富含高水分與巨量水溶性鉀離子，血鉀飆升速度極快。",
+            tips: "吃水果避開所有哈密瓜與美濃瓜。"
+          },
+          {
+            id: 504,
+            name: "草莓 / 小番茄(聖女) / 火龍果(紅/白) / 芭樂",
+            category: "fruit",
+            status: "avoid",
+            statusText: "🔴 避免食用",
+            tags: { protein: "微量", p: "低", k: "極高", na: "低" },
+            warning: "最常被誤認健康的隱形高鉀殺手，一口接一口食用極度容易引發急性心律不整。",
+            tips: "切勿將小番茄當減肥點心，火龍果與草莓少吃。"
+          },
+          {
+            id: 505,
+            name: "純果汁 / 現打蔬果汁 / 加工蕃茄汁",
+            category: "fruit",
+            status: "avoid",
+            statusText: "🔴 絕對禁食",
+            tags: { protein: "微量", p: "低中", k: "極高濃縮", na: "蕃茄汁高" },
+            warning: "一杯果汁往往集結 3～4 顆水果精華，等同直接將高濃度鉀離子灌進血管。",
+            tips: "口渴喝溫開水，拒絕任何市售純果汁或果菜汁。"
+          },
+          {
+            id: 506,
+            name: "脫水果乾 / 葡萄乾 / 龍眼乾 / 蜜餞",
+            category: "fruit",
+            status: "avoid",
+            statusText: "🔴 絕對禁食",
+            tags: { protein: "微量", p: "中", k: "脫水濃縮", na: "蜜餞超標" },
+            warning: "水分被抽乾後鉀離子高度濃縮，蜜餞更添加超量防腐劑與高鈉食鹽。",
+            tips: "零嘴徹底杜絕果乾蜜餞。"
+          },
+
+          // 油脂調味堅果類
+          {
+            id: 601,
+            name: "玄米油 / 橄欖油 / 芥花油 / 葵花油",
+            category: "oil",
+            status: "safe",
+            statusText: "🟢 建議食用",
+            tags: { protein: "無蛋白", p: "無磷", k: "無鉀", na: "無鈉" },
+            warning: "純植物油只提供優質不飽和脂肪酸與純淨熱量，完全不產生含氮毒素。",
+            tips: "三餐烹調正常放油煎炒（每天約 3～3.5 湯匙，佔總熱量 35% 以下），預防熱量不足肌肉分解。"
+          },
+          {
+            id: 602,
+            name: "豬油 / 牛油 / 奶油 / 瑪琪琳 / 沙拉醬",
+            category: "oil",
+            status: "avoid",
+            statusText: "🔴 避免食用",
+            tags: { protein: "無", p: "低中", k: "低", na: "沙拉醬高" },
+            warning: "飽和脂肪與反式脂肪會造成動脈硬化，加重心血管衰竭與腎性高血壓。",
+            tips: "做菜全面停用動物油與人造奶油，沙拉醬鈉鹽高亦應避免。"
+          },
+          {
+            id: 603,
+            name: "花生 / 腰果 / 核桃 / 杏仁 / 芝麻(醬)",
+            category: "oil",
+            status: "avoid",
+            statusText: "🔴 絕對禁食",
+            tags: { protein: "劣質植物蛋白", p: "極高爆表", k: "極高", na: "調味高" },
+            warning: "雖含油脂，但兼具『高磷＋高鉀＋劣質蛋白』三重致命打擊，血管鈣化元兇。",
+            tips: "嚴禁用堅果補充熱量，不吃花生醬、芝麻糊、麻醬麵。"
+          },
+          {
+            id: 604,
+            name: "沙茶醬 / 豆瓣醬 / 蠔油 / 辣椒醬",
+            category: "oil",
+            status: "avoid",
+            statusText: "🔴 絕對禁食",
+            tags: { protein: "低", p: "特高", k: "中高", na: "嚴重超標" },
+            warning: "高鈉高磷調味炸彈，大幅加重心臟負荷與高血磷皮膚劇癢。",
+            tips: "沾醬改用天然辛香料（蔥、薑、蒜、白醋、白糖）搭配微量醬油。"
+          },
+
+          // 湯品飲品點心類
+          {
+            id: 701,
+            name: "純糖水愛玉 / 仙草 / 粉圓（未加奶）",
+            category: "drink",
+            status: "safe",
+            statusText: "🟢 安全熱量",
+            tags: { protein: "無蛋白", p: "極低", k: "極低", na: "低" },
+            warning: "純碳水化合物點心，不產生肌酸酐與尿毒，是正餐外補充熱量的最佳點心。",
+            tips: "以白糖或蜂蜜調味；注意仙草愛玉含水量高，需限水水腫患者應扣除飲水額度。"
+          },
+          {
+            id: 702,
+            name: "大骨湯 / 火鍋湯 / 牛肉麵湯 / 菜湯 / 肉汁",
+            category: "drink",
+            status: "avoid",
+            statusText: "🔴 嚴禁喝湯",
+            tags: { protein: "雜質碎屑", p: "骨髓特高", k: "全溶入水", na: "超標" },
+            warning: "整鍋食材的鉀、磷、鈉全數濃縮溶入湯中，喝一碗湯等同服下一杯高濃度化學毒液。",
+            tips: "吃麵只吃麵、吃火鍋只吃乾料，嚴禁喝任何高湯，嚴禁用肉湯、菜湯淋飯。"
+          },
+          {
+            id: 703,
+            name: "鮮奶 / 奶粉 / 優格 / 起司 / 拿鐵",
+            category: "drink",
+            status: "avoid",
+            statusText: "🔴 避免飲用",
+            tags: { protein: "優質蛋白", p: "吸收率>90%", k: "高", na: "起司高" },
+            warning: "奶類磷吸收率高達 90% 以上，且隨餐服用鈣片等磷結合劑亦無法有效阻斷吸收！",
+            tips: "戒掉鮮奶拿鐵，若有營養不良需補給，請由醫師處方專用低磷鉀配方奶粉。"
+          },
+          {
+            id: 704,
+            name: "可樂 / 沙士 / 碳酸汽水 / 可可 / 啤酒",
+            category: "drink",
+            status: "avoid",
+            statusText: "🔴 絕對禁食",
+            tags: { protein: "無", p: "無機磷特高", k: "可可高", na: "低中" },
+            warning: "人為添加無機磷酸鹽作為防腐防酸劑，腸道吸收率 100%，加劇血管鈣化。",
+            tips: "口渴以白開水為主，絕不喝深色碳酸飲料與啤酒。"
+          },
+          {
+            id: 705,
+            name: "雞精 / 牛肉精 / 人蔘精 / 青草茶 / 運動飲料",
+            category: "drink",
+            status: "avoid",
+            statusText: "🔴 絕對禁食",
+            tags: { protein: "水解碎屑", p: "高", k: "極高濃縮", na: "運動飲高" },
+            warning: "濃縮補品鉀離子濃度極度驚人，常引發急性高血鉀、尿毒症及重金屬腎損傷。",
+            tips: "不買不喝任何市售補精，生病就醫，切勿聽信偏方燉草藥補身體。"
+          }
+        ]);
+
+        const filteredFoods = computed(() => {
+          return foods.value.filter(food => {
+            const query = searchQuery.value.trim().toLowerCase();
+            const matchesSearch = !query || 
+                                  food.name.toLowerCase().includes(query) || 
+                                  food.warning.toLowerCase().includes(query) ||
+                                  food.tips.toLowerCase().includes(query);
+            const matchesStatus = selectedStatus.value === 'all' || food.status === selectedStatus.value;
+            const matchesCategory = selectedCategory.value === 'all' || food.category === selectedCategory.value;
+            return matchesSearch && matchesStatus && matchesCategory;
+          });
+        });
+
+        const resetFilters = () => {
+          searchQuery.value = '';
+          selectedStatus.value = 'all';
+          selectedCategory.value = 'all';
+        };
+
+        const getCategoryLabel = (cat) => {
+          const found = categories.find(c => c.value === cat);
+          return found ? found.label : '';
+        };
+
+        const getStatusBadge = (status) => {
+          switch (status) {
+            case 'toxic': return 'bg-purple-900 text-white animate-pulse';
+            case 'avoid': return 'bg-rose-600 text-white';
+            case 'limit': return 'bg-amber-400 text-slate-900 font-bold';
+            case 'safe': return 'bg-emerald-600 text-white';
+            default: return 'bg-slate-200 text-slate-700';
+          }
+        };
+
+        const getStatusBorder = (status) => {
+          switch (status) {
+            case 'toxic': return 'border-l-4 border-l-purple-900 border-slate-200';
+            case 'avoid': return 'border-l-4 border-l-rose-500 border-slate-200';
+            case 'limit': return 'border-l-4 border-l-amber-400 border-slate-200';
+            case 'safe': return 'border-l-4 border-l-emerald-500 border-slate-200';
+            default: return 'border-slate-200';
+          }
+        };
+
+        return {
+          searchQuery,
+          selectedStatus,
+          selectedCategory,
+          statusTabs,
+          categories,
+          filteredFoods,
+          resetFilters,
+          getCategoryLabel,
+          getStatusBadge,
+          getStatusBorder
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
