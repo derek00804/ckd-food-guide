@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>KDIGO 現代實證個人化導航 - CKD 飲食指南</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen">
+  <div id="app" class="max-w-md mx-auto min-h-screen bg-white shadow-xl flex flex-col pb-8">
+    
+    <!-- 頂部導航 -->
+    <header class="bg-slate-800 text-white p-3.5 sticky top-0 z-30 shadow-md">
+      <div class="flex items-center justify-between">
+        <a href="index.html" class="text-xs bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded text-slate-200 transition">
+          ← 返回首頁
+        </a>
+        <h1 class="text-sm font-bold">KDIGO 實證動態導航</h1>
+        <span class="text-[10px] bg-sky-900 px-2 py-0.5 rounded text-sky-200">實證醫學</span>
+      </div>
+
+      <!-- 搜尋列 -->
+      <div class="mt-3 relative">
+        <input 
+          v-model="searchQuery" 
+          type="text" 
+          placeholder="搜尋食材（如：燕麥、香蕉、豆腐、菠菜、低鈉鹽）..."
+          class="w-full px-3.5 py-2 rounded-lg text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white"
+        />
+        <button 
+          v-if="searchQuery" 
+          @click="searchQuery = ''"
+          class="absolute right-3 top-2 text-slate-400 hover:text-slate-600 text-xs"
+        >✕</button>
+      </div>
+    </header>
+
+    <!-- 個人臨床條件設定面板 (動態引擎核心) -->
+    <section class="bg-slate-50 border-b border-slate-200 p-2.5 text-xs space-y-2 sticky top-[92px] z-20 shadow-sm">
+      <div class="flex items-center justify-between font-semibold text-slate-700">
+        <span class="text-[11px]">⚙️ 當前患者生理狀態設定：</span>
+        <span class="text-[10px] text-slate-400 font-normal">下拉即時切換評級</span>
+      </div>
+      
+      <div class="grid grid-cols-2 gap-2">
+        <div class="bg-white p-1.5 rounded border border-slate-200">
+          <label class="block text-[10px] text-slate-400 mb-0.5">CKD 階段</label>
+          <select v-model="userProfile.stage" class="w-full bg-slate-50 border border-slate-200 rounded p-1 text-[11px] font-medium text-slate-700">
+            <option value="early">CKD 1~2 期 (早期)</option>
+            <option value="moderate" selected>CKD 3~5 期 (未透析)</option>
+            <option value="dialysis">血液 / 腹膜透析 (洗腎)</option>
+          </select>
+        </div>
+
+        <div class="bg-white p-1.5 rounded border border-slate-200">
+          <label class="block text-[10px] text-slate-400 mb-0.5">血鉀檢驗值 (K+)</label>
+          <select v-model="userProfile.potassium" class="w-full bg-slate-50 border border-slate-200 rounded p-1 text-[11px] font-medium text-slate-700">
+            <option value="normal">正常 (≤ 5.0 mEq/L)</option>
+            <option value="high">偏高 (> 5.0 mEq/L)</option>
+          </select>
+        </div>
+
+        <div class="bg-white p-1.5 rounded border border-slate-200">
+          <label class="block text-[10px] text-slate-400 mb-0.5">血磷檢驗值 (P)</label>
+          <select v-model="userProfile.phosphorus" class="w-full bg-slate-50 border border-slate-200 rounded p-1 text-[11px] font-medium text-slate-700">
+            <option value="normal">正常</option>
+            <option value="high">偏高</option>
+          </select>
+        </div>
+
+        <div class="bg-white p-1.5 rounded border border-slate-200">
+          <label class="block text-[10px] text-slate-400 mb-0.5">共病狀況</label>
+          <select v-model="userProfile.diabetes" class="w-full bg-slate-50 border border-slate-200 rounded p-1 text-[11px] font-medium text-slate-700">
+            <option :value="false">無糖尿病</option>
+            <option :value="true">合併糖尿病</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- 食材大類橫向滑軌 -->
+    <div class="flex overflow-x-auto gap-1.5 p-2 bg-white border-b border-slate-100 text-xs no-scrollbar">
+      <button 
+        v-for="cat in categories" 
+        :key="cat.value"
+        @click="selectedCategory = cat.value"
+        :class="selectedCategory === cat.value ? 'bg-slate-800 text-white font-medium' : 'bg-slate-100 text-slate-600'"
+        class="px-2.5 py-1 rounded-md whitespace-nowrap transition"
+      >
+        {{ cat.label }}
+      </button>
+    </div>
+
+    <!-- 食物清單列表 -->
+    <main class="px-3 py-2 flex-1 overflow-y-auto space-y-2.5">
+      <div v-if="filteredFoods.length === 0" class="text-center py-16 text-slate-400">
+        <p class="text-3xl mb-2">🔍</p>
+        <p class="text-xs">查無符合食材</p>
+      </div>
+
+      <div 
+        v-for="food in filteredFoods" 
+        :key="food.id"
+        class="border rounded-lg p-3 bg-white shadow-sm space-y-2 border-slate-200"
+      >
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <h3 class="font-bold text-slate-900 text-sm leading-snug">{{ food.name }}</h3>
+            <span class="text-[10px] text-slate-400">{{ getCategoryLabel(food.category) }}</span>
+          </div>
+          <span 
+            class="px-2 py-0.5 rounded text-[11px] font-bold whitespace-nowrap border"
+            :class="getDynamicBadge(food)"
+          >
+            {{ getDynamicStatusText(food) }}
+          </span>
+        </div>
+
+        <div class="grid grid-cols-4 gap-1 text-center text-[10px] bg-slate-50 p-1.5 rounded">
+          <div>
+            <span class="text-slate-400 block text-[9px]">蛋白質屬性</span>
+            <span class="font-medium text-slate-700">{{ food.attributes.proteinType }}</span>
+          </div>
+          <div>
+            <span class="text-slate-400 block text-[9px]">磷來源/含量</span>
+            <span class="font-medium text-slate-700">{{ food.attributes.pType }}</span>
+          </div>
+          <div>
+            <span class="text-slate-400 block text-[9px]">天然鉀密度</span>
+            <span class="font-medium text-slate-700">{{ food.attributes.kDensity }}</span>
+          </div>
+          <div>
+            <span class="text-slate-400 block text-[9px]">加工/鈉特性</span>
+            <span class="font-medium text-slate-700">{{ food.attributes.naType }}</span>
+          </div>
+        </div>
+
+        <div class="bg-blue-50/50 border border-blue-100 rounded p-2 text-xs space-y-1">
+          <p class="text-slate-700 leading-relaxed text-[11px]">
+            <strong class="text-blue-900">📋 當前建議：</strong>{{ getDynamicAdvice(food) }}
+          </p>
+          <p v-if="food.prepTips" class="text-slate-600 leading-relaxed text-[10px]">
+            <strong class="text-slate-700">💡 備餐指引：</strong>{{ food.prepTips }}
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="mt-4 mx-3 p-2.5 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-500 leading-relaxed">
+      <strong>⚠️ 臨床指引聲明：</strong> 本模式依據 KDIGO 2024 與 NKF 實證原則設計，避免盲目限食。個人用藥（如降血壓藥、保鉀利尿劑）及營養狀態各異，請諮詢主治醫師與臨床營養師。
+    </footer>
+  </div>
+
+  <script>
+    const { createApp, ref, computed } = Vue;
+
+    createApp({
+      setup() {
+        const searchQuery = ref('');
+        const selectedCategory = ref('all');
+
+        const userProfile = ref({
+          stage: 'moderate',
+          potassium: 'normal',
+          phosphorus: 'normal',
+          diabetes: false
+        });
+
+        const categories = [
+          { label: '全部', value: 'all' },
+          { label: '全穀主食', value: 'staple' },
+          { label: '豆魚蛋肉', value: 'protein' },
+          { label: '蔬菜類', value: 'vegetable' },
+          { label: '水果類', value: 'fruit' },
+          { label: '油脂堅果', value: 'oil' },
+          { label: '調味加工', value: 'processed' }
+        ];
+
+        const foods = ref([
+          {
+            id: 1,
+            name: "新鮮楊桃 / 楊桃汁 / 楊桃乾",
+            category: "fruit",
+            attributes: { proteinType: "無", pType: "低", kDensity: "中", naType: "低" },
+            isAbsoluteContraindicated: true,
+            contraindicationReason: "含特定神經毒素 Caramboxin，CKD 患者腎臟清除功能下降時無法排除，易蓄積引起頑固打嗝、意識障礙甚至抽搐昏迷，各期別皆嚴格禁止食用。",
+            prepTips: null
+          },
+          {
+            id: 2,
+            name: "市售減鈉鹽 / 低鈉鹽 (含 KCl)",
+            category: "processed",
+            attributes: { proteinType: "無", pType: "無", kDensity: "添加氯化鉀", naType: "低至中鈉" },
+            evaluate(profile) {
+              if (profile.potassium === 'high' || profile.stage === 'dialysis' || profile.stage === 'moderate') {
+                return {
+                  status: 'caution',
+                  statusText: '⚠️ 不建議常規使用',
+                  advice: '部分減鈉鹽使用『氯化鉀 (KCl)』替代氯化鈉。中晚期 CKD 或服用保鉀藥物者，可能引發血鉀過高，使用前必須確認成分表並諮詢醫師。'
+                };
+              }
+              return {
+                status: 'monitor',
+                statusText: '🔍 需確認成分',
+                advice: '若血鉀正常且未服用留鉀藥物，減鈉有助血壓控制；但仍應確認是否含氯化鉀，切勿自行過量添加。'
+              };
+            },
+            prepTips: "可多利用天然蔥、薑、蒜、檸檬汁或黑胡椒粒等無鉀無鈉辛香料取代代鹽調味。"
+          },
+          {
+            id: 101,
+            name: "燕麥 / 糙米 / 全麥麵包",
+            category: "staple",
+            attributes: { proteinType: "植物性蛋白", pType: "植酸磷(吸收率低)", kDensity: "偏高", naType: "天然低鈉" },
+            evaluate(profile) {
+              if (profile.potassium === 'high') {
+                return {
+                  status: 'limit',
+                  statusText: '🟡 暫時限量',
+                  advice: '目前血鉀偏高，因全穀類天然鉀含量高於白米，建議短期改以白飯、冬粉為主，待血鉀平穩後再逐步納入。'
+                };
+              }
+              return {
+                status: 'safe',
+                statusText: '🟢 健康全穀（適量）',
+                advice: 'KDIGO 2024 支持富含纖維的全穀飲食。其磷主要為植物性植酸磷，腸道吸收率僅約 20%~40%，並有助於腸道菌相健康，適量食用即可。'
+              };
+            },
+            prepTips: "烹煮糙米可先充分浸泡並換水，有助於進一步釋出部分水溶性鉀離子。"
+          },
+          {
+            id: 102,
+            name: "冬粉 / 純米粉 / 西谷米",
+            category: "staple",
+            attributes: { proteinType: "近零蛋白", pType: "極低", kDensity: "極低", naType: "低" },
+            evaluate(profile) {
+              if (profile.diabetes) {
+                return {
+                  status: 'monitor',
+                  statusText: '🔍 注意血糖',
+                  advice: '純精緻碳水化合物，對腎臟不產生含氮廢物，但升糖指數較高，合併糖尿病者需計算總醣量以防血糖波動。'
+                };
+              }
+              return {
+                status: 'safe',
+                statusText: '🟢 優質熱量來源',
+                advice: '極佳的低蛋白熱量補充主食，在限制總蛋白質攝取時，有助於預防熱量不足導致自體組織分解（PEW）。'
+              };
+            },
+            prepTips: "可搭配植物油拌炒，提供不帶蛋白質的清潔熱量。"
+          },
+          {
+            id: 201,
+            name: "豆腐 / 豆干 / 無糖豆漿",
+            category: "protein",
+            attributes: { proteinType: "優質植物蛋白", pType: "植酸磷(吸收率低)", kDensity: "中等", naType: "低" },
+            evaluate(profile) {
+              return {
+                status: 'safe',
+                statusText: '🟢 優質蛋白來源',
+                advice: '現代醫學證實黃豆屬高生物價優質蛋白。相較於動物肉，黃豆具較低腎絲球高過濾風險，且植物性磷吸收率低，應納入日常蛋白質份額中替換肉類。'
+              };
+            },
+            prepTips: "計入全日蛋白質總量管理（1 塊傳統豆腐或 2 片小豆干約等於 1 份蛋白質）。"
+          },
+          {
+            id: 202,
+            name: "紅豆 / 綠豆 / 黑豆",
+            category: "protein",
+            attributes: { proteinType: "植物性蛋白", pType: "植酸磷", kDensity: "偏高", naType: "低" },
+            evaluate(profile) {
+              if (profile.potassium === 'high') {
+                return {
+                  status: 'limit',
+                  statusText: '🟡 暫時減量',
+                  advice: '乾豆類天然鉀含量較高，目前血鉀偏高者應暫時限制食用，優先以豆腐或白米作為來源。'
+                };
+              }
+              return {
+                status: 'safe',
+                statusText: '🟢 多樣化攝取',
+                advice: 'NKF 指出無須常規戒斷豆類。豆類富含抗性澱粉與纖維，其磷吸收率低，只要注意總蛋白質與主食代換，可適量食用。'
+              };
+            },
+            prepTips: "煮豆湯前可浸泡數小時並丟棄浸泡水，以減少部分鉀含量。"
+          },
+          {
+            id: 203,
+            name: "香腸 / 火腿 / 貢丸 / 培根",
+            category: "processed",
+            attributes: { proteinType: "加工肉品", pType: "無機添加磷(吸收率~100%)", kDensity: "中等", naType: "極高鈉" },
+            evaluate(profile) {
+              return {
+                status: 'avoid',
+                statusText: '🔴 建議避免',
+                advice: '含有化學合成無機磷酸鹽（腸道吸收率近 100%），直接推升血磷與心血管鈣化風險；高鈉更會加速腎絲球硬化與血壓惡化。'
+              };
+            },
+            prepTips: "請以新鮮原塊肉品（雞肉、豬里肌、鮮魚）取代任何加工肉製品。"
+          },
+          {
+            id: 301,
+            name: "菠菜 / 空心菜 / 青花菜",
+            category: "vegetable",
+            attributes: { proteinType: "極微", pType: "低", kDensity: "高鉀葉菜", naType: "天然低鈉" },
+            evaluate(profile) {
+              if (profile.potassium === 'high') {
+                return {
+                  status: 'caution',
+                  statusText: '🟡 需汆燙去鉀',
+                  advice: '血鉀偏高時，葉菜應先切段，以大量沸水汆燙 3~5 分鐘撈起瀝乾水分再炒，不可直接生食或飲用菜湯。'
+                };
+              }
+              return {
+                status: 'safe',
+                statusText: '🟢 安心適量食用',
+                advice: '若血鉀檢驗正常，植物性鉀並不會立即導致高血鉀，蔬菜所含的鹼性離子與抗氧化物更具腎臟保護效益，維持一般烹煮食用即可。'
+              };
+            },
+            prepTips: "若需要降低鉀攝取，汆燙法（水煮並捨棄湯水）可去除蔬菜中約 30%~50% 的水溶性鉀。"
+          },
+          {
+            id: 302,
+            name: "高麗菜 / 冬瓜 / 絲瓜 / 小黃瓜",
+            category: "vegetable",
+            attributes: { proteinType: "極微", pType: "低", kDensity: "天然低至中鉀", naType: "天然低鈉" },
+            evaluate(profile) {
+              return {
+                status: 'safe',
+                statusText: '🟢 自由選用',
+                advice: '天然鉀與磷含量皆低，水分高且纖維柔細，是各期別與各類檢驗狀態下均相當理想的蔬菜來源。'
+              };
+            },
+            prepTips: "一般油炒、清蒸皆宜。"
+          },
+          {
+            id: 401,
+            name: "香蕉 / 奇異果 / 柑橘",
+            category: "fruit",
+            attributes: { proteinType: "微量", pType: "低", kDensity: "高鉀水果", naType: "低" },
+            evaluate(profile) {
+              if (profile.potassium === 'high') {
+                return {
+                  status: 'limit',
+                  statusText: '🟡 需控制份量',
+                  advice: '因水果多為生食無法燙煮去鉀，目前血鉀偏高時應控制每日攝取量（每次約半根香蕉或 1 顆小柑橘以內），或改選低鉀水果。'
+                };
+              }
+              return {
+                status: 'safe',
+                statusText: '🟢 適量食用',
+                advice: '血鉀正常時無須完全排除高鉀水果。每日總水果量維持在 1~2 份（約拳頭大），正常多樣化攝取。'
+              };
+            },
+            prepTips: "避免一次性大量進食或榨成濃縮果汁飲用。"
+          },
+          {
+            id: 402,
+            name: "草莓 / 蘋果 / 葡萄 / 水梨",
+            category: "fruit",
+            attributes: { proteinType: "微量", pType: "低", kDensity: "天然低鉀水果", naType: "低" },
+            evaluate(profile) {
+              return {
+                status: 'safe',
+                statusText: '🟢 安全首選',
+                advice: '天然鉀含量相對平緩，是 CKD 各期別（包含需控鉀患者）最合適的水果選擇。'
+              };
+            },
+            prepTips: "每日 1~2 份即可，咀嚼果肉優於飲用果汁。"
+          },
+          {
+            id: 501,
+            name: "原味堅果（核桃、腰果、杏仁）",
+            category: "oil",
+            attributes: { proteinType: "植物性蛋白", pType: "植酸磷", kDensity: "中等至偏高", naType: "無調味低鈉" },
+            evaluate(profile) {
+              if (profile.potassium === 'high' || profile.phosphorus === 'high') {
+                return {
+                  status: 'limit',
+                  statusText: '🟡 需計量攝取',
+                  advice: '富含健康不飽和脂肪，但營養密度極高。血鉀或血磷偏高時應嚴格限制每日一份以內（約白色塑膠湯匙 1 平匙）。'
+                };
+              }
+              return {
+                status: 'safe',
+                statusText: '🟢 良好油脂來源',
+                advice: 'NKF 指出無須全面禁用堅果。每日適量（約一把/10~15g）有助心血管健康，植物性磷吸收率低，避免選用加鹽調味品項。'
+              };
+            },
+            prepTips: "務必挑選無調味低溫烘焙堅果，避免油炸及高鈉蜜汁加工堅果。"
+          }
+        ]);
+
+        const filteredFoods = computed(() => {
+          return foods.value.filter(food => {
+            const query = searchQuery.value.trim().toLowerCase();
+            const matchesSearch = !query || food.name.toLowerCase().includes(query);
+            const matchesCategory = selectedCategory.value === 'all' || food.category === selectedCategory.value;
+            return matchesSearch && matchesCategory;
+          });
+        });
+
+        const getDynamicStatus = (food) => {
+          if (food.isAbsoluteContraindicated) return 'toxic';
+          return food.evaluate(userProfile.value).status;
+        };
+
+        const getDynamicStatusText = (food) => {
+          if (food.isAbsoluteContraindicated) return '⛔ 絕對禁食';
+          return food.evaluate(userProfile.value).statusText;
+        };
+
+        const getDynamicAdvice = (food) => {
+          if (food.isAbsoluteContraindicated) return food.contraindicationReason;
+          return food.evaluate(userProfile.value).advice;
+        };
+
+        const getDynamicBadge = (food) => {
+          const status = getDynamicStatus(food);
+          switch (status) {
+            case 'toxic': return 'bg-rose-50 text-rose-700 border-rose-200';
+            case 'avoid': return 'bg-orange-50 text-orange-700 border-orange-200';
+            case 'caution':
+            case 'limit':
+            case 'monitor': return 'bg-amber-50 text-amber-800 border-amber-200';
+            case 'safe': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+            default: return 'bg-slate-50 text-slate-700 border-slate-200';
+          }
+        };
+
+        const getCategoryLabel = (cat) => {
+          const found = categories.find(c => c.value === cat);
+          return found ? found.label : '';
+        };
+
+        return {
+          searchQuery,
+          selectedCategory,
+          userProfile,
+          categories,
+          filteredFoods,
+          getDynamicStatusText,
+          getDynamicAdvice,
+          getDynamicBadge,
+          getCategoryLabel
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
