@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>慢性腎臟病飲食快查｜依《慢性腎臟病健康管理手冊》第二版</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    html { scroll-behavior: smooth; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen">
+  <div id="app" class="max-w-md mx-auto min-h-screen bg-white shadow-xl flex flex-col pb-8">
+
+    <!-- Header (已加入返回首頁連結) -->
+    <header class="bg-teal-700 text-white p-4 sticky top-0 z-40 shadow-md">
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <a href="index.html" class="text-xs bg-teal-800 hover:bg-teal-900 px-2.5 py-1 rounded text-teal-100 transition whitespace-nowrap">
+            ← 返回首頁
+          </a>
+          <h1 class="text-lg font-bold flex items-center gap-1.5">
+            <span>🥗</span> 腎臟病飲食快查
+          </h1>
+        </div>
+        <span class="text-[10px] bg-teal-800 px-2 py-1 rounded text-teal-100 whitespace-nowrap">國健署手冊版</span>
+      </div>
+      <p class="text-xs text-teal-100 mt-1.5 leading-relaxed">
+        依據衛福部國健署《慢性腎臟病健康管理手冊》第二版（2018）整理
+      </p>
+
+      <div class="mt-3 relative">
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="搜尋食材或菜色（如：四季豆、豆腐、冬粉、咖哩飯）..."
+          class="w-full px-4 py-2.5 rounded-lg text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white shadow-inner"
+        />
+        <button
+          v-if="searchQuery"
+          @click="searchQuery = ''"
+          class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 text-sm"
+          aria-label="清除搜尋"
+        >✕</button>
+      </div>
+    </header>
+
+    <!-- 情境設定 -->
+    <section class="px-3 pt-3 pb-2 bg-white border-b border-slate-200">
+      <div class="text-xs font-bold text-slate-700 mb-2">先選擇目前飲食情境</div>
+
+      <div class="grid grid-cols-2 gap-2">
+        <button
+          v-for="stage in stages"
+          :key="stage.value"
+          @click="selectedStage = stage.value"
+          :class="selectedStage === stage.value
+            ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
+            : 'bg-slate-50 text-slate-700 border-slate-200'"
+          class="border rounded-lg px-3 py-2 text-left transition"
+        >
+          <div class="text-xs font-bold">{{ stage.label }}</div>
+          <div class="text-[10px] mt-0.5 opacity-80">{{ stage.description }}</div>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2 mt-2">
+        <label
+          v-for="context in extraContexts"
+          :key="context.key"
+          class="border rounded-lg p-2 cursor-pointer"
+          :class="contextEnabled(context.key)
+            ? 'bg-amber-50 border-amber-300'
+            : 'bg-slate-50 border-slate-200'"
+        >
+          <div class="flex items-start gap-1.5">
+            <input
+              type="checkbox"
+              :checked="contextEnabled(context.key)"
+              @change="toggleContext(context.key)"
+              class="mt-0.5 accent-teal-600"
+            />
+            <span class="text-[10px] font-semibold leading-snug">{{ context.label }}</span>
+          </div>
+        </label>
+      </div>
+
+      <p class="text-[10px] text-slate-500 mt-2 leading-relaxed">
+        低鉀、低磷與限水是「有相應檢驗結果或醫師／營養師指示時」才啟用的情境，不是所有 CKD 患者都一律相同。
+      </p>
+    </section>
+
+    <!-- 狀態篩選 -->
+    <div class="bg-slate-50 p-2 grid grid-cols-4 gap-1 text-xs border-b border-slate-200 sticky top-[109px] z-30 shadow-sm">
+      <button
+        v-for="tab in statusTabs"
+        :key="tab.value"
+        @click="selectedStatus = tab.value"
+        :class="selectedStatus === tab.value ? tab.activeClass : 'text-slate-500 hover:bg-slate-200'"
+        class="py-1.5 rounded text-center transition font-medium"
+      >
+        {{ tab.label }}
+      </button>
+    </div>
+
+    <!-- 類別 -->
+    <div class="flex overflow-x-auto gap-2 p-3 bg-white border-b border-slate-100 no-scrollbar text-xs sticky top-[153px] z-20 shadow-sm">
+      <button
+        v-for="cat in categories"
+        :key="cat.value"
+        @click="selectedCategory = cat.value"
+        :class="selectedCategory === cat.value ? 'bg-teal-600 text-white font-medium shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+        class="px-3 py-1.5 rounded-full whitespace-nowrap transition"
+      >
+        {{ cat.label }}
+      </button>
+    </div>
+
+    <!-- 情境摘要 -->
+    <section class="mx-3 mt-3 rounded-xl border border-teal-100 bg-teal-50 p-3">
+      <div class="flex items-center justify-between gap-2">
+        <div class="text-xs font-bold text-teal-900">目前套用的飲食邏輯</div>
+        <button @click="resetProfile" class="text-[10px] text-teal-700 underline">清除特殊情境</button>
+      </div>
+      <p class="text-[11px] text-teal-900 leading-relaxed mt-1">{{ profileSummary }}</p>
+
+      <div v-if="selectedStage === 'late'" class="mt-2 grid grid-cols-2 gap-2">
+        <div class="bg-white rounded-lg p-2 border border-teal-100">
+          <div class="text-[10px] text-slate-500">1500–1700 kcal／天示例</div>
+          <div class="text-[11px] font-semibold mt-1">白飯 2 碗＋豆魚蛋類 3 份＋低氮澱粉 1–2 碗</div>
+        </div>
+        <div class="bg-white rounded-lg p-2 border border-teal-100">
+          <div class="text-[10px] text-slate-500">1800–2000 kcal／天示例</div>
+          <div class="text-[11px] font-semibold mt-1">白飯 2.5–3 碗＋豆魚蛋類 4 份＋低氮澱粉 1–2 碗</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 筆數 -->
+    <div class="px-4 py-2 text-xs text-slate-400 flex justify-between items-center">
+      <span>已載入 {{ foods.length }} 項食材／菜色，目前顯示 {{ filteredFoods.length }} 項</span>
+      <span
+        v-if="hasAnyFilter"
+        class="text-teal-600 cursor-pointer font-medium"
+        @click="resetFilters"
+      >重設篩選</span>
+    </div>
+
+    <!-- 食物清單 -->
+    <main class="px-3 flex-1 space-y-3">
+      <div v-if="filteredFoods.length === 0" class="text-center py-16 text-slate-400">
+        <p class="text-4xl mb-3">🔍</p>
+        <p class="text-sm font-medium">查無符合條件的食材</p>
+        <button @click="resetFilters" class="mt-3 text-xs text-teal-600 underline">清除所有搜尋條件</button>
+      </div>
+
+      <article
+        v-for="food in filteredFoods"
+        :key="food.id"
+        class="border rounded-xl p-3.5 bg-white shadow-sm transition hover:shadow-md"
+        :class="getStatusBorder(food.status)"
+      >
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <h3 class="font-bold text-base text-slate-900 leading-snug">{{ food.name }}</h3>
+            <span class="text-[11px] text-slate-400 font-medium">{{ getCategoryLabel(food.category) }}</span>
+          </div>
+          <span
+            class="px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap shadow-sm"
+            :class="getStatusBadge(food.status)"
+          >
+            {{ getStatusText(food.status) }}
+          </span>
+        </div>
+
+        <div class="grid grid-cols-4 gap-1.5 my-2.5 text-center text-[11px]">
+          <div class="bg-slate-50 p-1.5 rounded border border-slate-100">
+            <span class="text-slate-400 block text-[10px]">蛋白質</span>
+            <span class="font-semibold text-slate-700">{{ food.tags.protein }}</span>
+          </div>
+          <div class="bg-slate-50 p-1.5 rounded border border-slate-100">
+            <span class="text-slate-400 block text-[10px]">磷</span>
+            <span class="font-semibold text-slate-700">{{ food.tags.p }}</span>
+          </div>
+          <div class="bg-slate-50 p-1.5 rounded border border-slate-100">
+            <span class="text-slate-400 block text-[10px]">鉀</span>
+            <span class="font-semibold text-slate-700">{{ food.tags.k }}</span>
+          </div>
+          <div class="bg-slate-50 p-1.5 rounded border border-slate-100">
+            <span class="text-slate-400 block text-[10px]">鈉</span>
+            <span class="font-semibold text-slate-700">{{ food.tags.na }}</span>
+          </div>
+        </div>
+
+        <div class="bg-slate-50 rounded-lg p-2.5 text-xs space-y-1.5 border border-slate-100">
+          <p class="text-slate-700 leading-relaxed">
+            <strong class="text-slate-900">📌 指南重點：</strong>{{ resolvedWarning(food) }}
+          </p>
+          <p class="text-teal-900 leading-relaxed">
+            <strong class="text-teal-950">💡 食用／料理叮嚀：</strong>{{ resolvedTips(food) }}
+          </p>
+        </div>
+
+        <div v-if="food.sources && food.sources.length" class="mt-2 text-[10px] text-slate-400 leading-relaxed">
+          來源章節：{{ food.sources.join('、') }}
+        </div>
+      </article>
+    </main>
+
+    <!-- 晚期飲食原則 -->
+    <section v-if="selectedStage === 'late'" class="mt-4 mx-3 p-3 rounded-xl border border-slate-200 bg-slate-50">
+      <h2 class="text-xs font-bold text-slate-800">晚期 CKD 的核心原則</h2>
+      <div class="mt-2 space-y-1.5 text-[11px] text-slate-700 leading-relaxed">
+        <p>• 蛋白質依體重及病情限量，優先選擇魚、肉、蛋、黃豆製品等高生物價蛋白質。</p>
+        <p>• 手冊的示例是每天豆魚蛋肉類總量約 2–4 份；實際份量應依個人營養計畫，不把「2–4 份」理解成只吃肉。</p>
+        <p>• 熱量不足時，可使用適量油脂與低氮澱粉補足熱量，避免營養不良。</p>
+        <p>• 血磷或血鉀異常時，再套用相對應的限制；不應把所有晚期患者都當成高鉀或高磷。</p>
+      </div>
+    </section>
+
+    <!-- 安全提醒 -->
+    <footer class="mt-4 mx-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 leading-relaxed">
+      <strong>⚠️ 重要提醒</strong><br>
+      本頁是依 2018 年《慢性腎臟病健康管理手冊》第二版整理的查詢工具，不是個人化醫療處方。
+      CKD 的蛋白質、鉀、磷與水分需求會依腎臟病分期、血液檢查、尿量、體重、是否洗腎及其他疾病而不同。
+      若醫師或營養師已有個人化計畫，應以該計畫為準。
+      <br><br>
+      <strong>本工具特別避免的錯誤：</strong>不把低鈉鹽一律標成「劇毒」、不把所有 CKD 患者一律要求低鉀或限水，也不提供自行服用磷結合劑的劑量指示。
+    </footer>
+
+    <!-- Source -->
+    <section class="mx-3 mt-3 text-[10px] text-slate-400 leading-relaxed">
+      <div class="font-semibold text-slate-500">主要資料來源</div>
+      <div>衛生福利部國民健康署、高雄醫學大學附設中和紀念醫院腎臟照護團隊、台灣腎臟醫學會：《慢性腎臟病健康管理手冊》第二版，2018。</div>
+      <div class="mt-1 break-all">https://www.tsn.org.tw/archive/20210906/9f72cc0a-57e8-4158-8311-4ec202f31d92/9f72cc0a-57e8-4158-8311-4ec202f31d92.pdf</div>
+    </section>
+  </div>
+
+  <script>
+    const { createApp, ref, computed } = Vue;
+
+    createApp({
+      setup() {
+        const searchQuery = ref('');
+        const selectedStatus = ref('all');
+        const selectedCategory = ref('all');
+        const selectedStage = ref('general');
+        const activeContexts = ref([]);
+
+        const stages = [
+          {
+            label: '一般／初期 CKD',
+            value: 'general',
+            description: '以清淡、均衡、適量蛋白質為主'
+          },
+          {
+            label: 'CKD 晚期',
+            value: 'late',
+            description: '套用手冊的低蛋白＋足夠熱量原則'
+          }
+        ];
+
+        const extraContexts = [
+          { key: 'highK', label: '血鉀過高／醫囑限鉀' },
+          { key: 'highP', label: '血磷異常／醫囑限磷' },
+          { key: 'fluid', label: '嚴格限水／有醫囑' }
+        ];
+
+        const categories = [
+          { label: '全部種類', value: 'all' },
+          { label: '🍚 主食', value: 'staple' },
+          { label: '🥩 豆魚蛋肉', value: 'protein' },
+          { label: '🥛 奶／高磷', value: 'dairy' },
+          { label: '🥬 蔬菜', value: 'vegetable' },
+          { label: '🍎 水果', value: 'fruit' },
+          { label: '🫒 油脂調味', value: 'seasoning' },
+          { label: '🥣 湯品飲料', value: 'drink' },
+          { label: '🍬 熱量補充', value: 'calorie' }
+        ];
+
+        const statusTabs = [
+          { label: '全部', value: 'all', activeClass: 'bg-white shadow text-teal-800 font-bold border border-slate-200' },
+          { label: '🟢 可選／優先', value: 'preferred', activeClass: 'bg-emerald-50 text-emerald-800 font-bold border border-emerald-200' },
+          { label: '🟡 適量／注意', value: 'moderate', activeClass: 'bg-amber-50 text-amber-800 font-bold border border-amber-200' },
+          { label: '🔴 避免／限制', value: 'avoid', activeClass: 'bg-rose-50 text-rose-800 font-bold border border-rose-200' }
+        ];
+
+        const foods = ref([
+          {
+            id: 1,
+            name: '楊桃（新鮮楊桃、楊桃汁、楊桃乾、蜜餞）',
+            category: 'fruit',
+            tags: { protein: '低', p: '需注意加工品', k: '高／有特殊風險', na: '依產品而異' },
+            baseStatus: 'avoid',
+            lateStatus: 'avoid',
+            highKStatus: 'avoid',
+            highPStatus: 'avoid',
+            warning: '手冊列為腎臟病患者應避免的水果，並特別提醒楊桃對腎臟病患者可能造成神經毒性症狀。',
+            tips: '不要以楊桃、楊桃汁或楊桃製品作為日常水果或飲品。',
+            sources: ['水果禁忌', '晚期血鉀異常飲食原則']
+          },
+          {
+            id: 2,
+            name: '低鈉鹽／健康美味鹽／薄鹽／無鹽醬油',
+            category: 'seasoning',
+            tags: { protein: '無', p: '低', k: '部分產品可能較高', na: '較低但須看標示' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'avoid',
+            highPStatus: 'moderate',
+            warning: '手冊指出部分低鈉或薄鹽產品可能以鉀代替鈉；低鈉鹽使用應經醫師或營養師建議。',
+            tips: '不要因「低鈉」就自行大量使用；若有高血鉀或醫囑限鉀，應避免含鉀替代鹽，並查看產品成分。',
+            sources: ['清淡烹調', '晚期血鉀異常飲食原則']
+          },
+          {
+            id: 3,
+            name: '白米飯',
+            category: 'staple',
+            tags: { protein: '較低', p: '較低', k: '較低', na: '低（未加鹽）' },
+            baseStatus: 'preferred',
+            lateStatus: 'preferred',
+            highKStatus: 'preferred',
+            highPStatus: 'preferred',
+            warning: '手冊的晚期飲食示例以白米飯為主要主食，並指出米飯的蛋白質與磷通常低於麵食。',
+            tips: '依個人熱量與營養師規劃調整份量；不要以菜湯或肉湯拌飯。',
+            sources: ['慢性腎臟病初期飲食原則', '腎臟病晚期飲食原則', '晚期外食技巧']
+          },
+          {
+            id: 4,
+            name: '糙米／全穀米／全麥製品／燕麥奶／八寶粥／綜合穀粉',
+            category: 'staple',
+            tags: { protein: '含植物蛋白', p: '較高', k: '依種類而異', na: '依產品而異' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'moderate',
+            highPStatus: 'avoid',
+            warning: '手冊在晚期血磷異常的食物表中列入糙米、全麥製品、小麥胚芽等高磷食物；並非所有 CKD 階段都一律禁食。',
+            tips: '若處於晚期且血磷異常，依營養師計畫限制；不要把「高磷時限制」理解成所有 CKD 永久禁食。',
+            sources: ['晚期血磷異常飲食原則']
+          },
+          {
+            id: 5,
+            name: '冬粉／米粉／米苔目／西谷米／藕粉等低氮澱粉',
+            category: 'staple',
+            tags: { protein: '低', p: '較低', k: '依產品而異', na: '依調味而異' },
+            baseStatus: 'moderate',
+            lateStatus: 'preferred',
+            highKStatus: 'preferred',
+            highPStatus: 'preferred',
+            warning: '手冊在晚期低蛋白飲食中以低氮澱粉補足熱量，例子包含冬粉、米粉、西谷米等。',
+            tips: '重點是原料與調味；炒冬粉、炒米粉、米苔目可作外食選擇，但要避免大量高鈉醬料。',
+            sources: ['腎臟病晚期飲食原則', '晚期外食技巧']
+          },
+          {
+            id: 6,
+            name: '白麵條／白吐司／饅頭／一般麵食',
+            category: 'staple',
+            tags: { protein: '中低', p: '較白米高', k: '依種類而異', na: '部分產品偏高' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'moderate',
+            highPStatus: 'moderate',
+            warning: '手冊在晚期建議多選米飯、少吃麵條與麵包；初期則可依整體飲食與份量安排。',
+            tips: '避免高鈉麵線、油麵、泡麵及過多加工醬料；不需要把所有麵食一律列為禁食。',
+            sources: ['清淡烹調', '腎臟病晚期飲食原則']
+          },
+          {
+            id: 7,
+            name: '地瓜／馬鈴薯／芋頭／山藥',
+            category: 'staple',
+            tags: { protein: '低', p: '依種類而異', k: '較高', na: '低（未調味）' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'avoid',
+            highPStatus: 'moderate',
+            warning: '手冊的重點不是所有根莖類都禁食，而是血鉀過高時要降低高鉀食物攝取。',
+            tips: '有血鉀過高時，再依醫師／營養師建議控制份量與烹調方式；不要自行把所有根莖類完全刪除。',
+            sources: ['晚期血鉀異常飲食原則']
+          },
+          {
+            id: 8,
+            name: '泡麵／麵線／油麵／蘇打餅乾',
+            category: 'staple',
+            tags: { protein: '依產品而異', p: '加工後可能較高', k: '依產品而異', na: '高' },
+            baseStatus: 'avoid',
+            lateStatus: 'avoid',
+            highKStatus: 'avoid',
+            highPStatus: 'avoid',
+            warning: '手冊列為高鹽加工食物，經常食用容易造成鹽分攝取過量；部分加工食品也可能含磷添加物。',
+            tips: '以新鮮食材為主；泡麵、油麵、麵線與高鈉餅乾不宜經常食用。',
+            sources: ['清淡烹調', '減鹽小技巧']
+          },
+          {
+            id: 9,
+            name: '魚／雞肉／豬肉／牛肉／蛋／黃豆製品',
+            category: 'protein',
+            tags: { protein: '高生物價', p: '依種類而異', k: '依種類而異', na: '新鮮原型較低' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'moderate',
+            highPStatus: 'moderate',
+            warning: '手冊將魚、肉、蛋與黃豆製品列為高生物價蛋白質；晚期需依體重與病情限量，而不是完全不吃。',
+            tips: '晚期以「豆、魚、蛋、肉全部加總」計算份量；優先原型、清淡、去除明顯肥肉或皮。',
+            sources: ['腎臟病晚期飲食原則']
+          },
+          {
+            id: 10,
+            name: '加工肉品／火腿／香腸／燻雞／肉乾／肉鬆',
+            category: 'protein',
+            tags: { protein: '有蛋白質', p: '部分含磷添加物', k: '依產品而異', na: '高' },
+            baseStatus: 'avoid',
+            lateStatus: 'avoid',
+            highKStatus: 'avoid',
+            highPStatus: 'avoid',
+            warning: '手冊把加工肉品列入高鹽食物，晚期血磷異常食物表也包含部分加工肉食。',
+            tips: '優先新鮮魚肉、瘦肉、雞肉或豆腐；加工肉品應減少。',
+            sources: ['減鹽小技巧', '晚期血磷異常飲食原則']
+          },
+          {
+            id: 11,
+            name: '火鍋丸類／餃類／魚丸／貢丸',
+            category: 'protein',
+            tags: { protein: '有蛋白質', p: '加工品可能較高', k: '依產品而異', na: '通常較高' },
+            baseStatus: 'avoid',
+            lateStatus: 'avoid',
+            highKStatus: 'avoid',
+            highPStatus: 'avoid',
+            warning: '手冊將火鍋丸類與餃類列入高磷加工食品，也常伴隨較高鈉。',
+            tips: '外食可用新鮮原肉、魚肉、豆腐替代加工丸餃。',
+            sources: ['晚期血磷異常飲食原則']
+          },
+          {
+            id: 12,
+            name: '魚卵／蟹卵／卵磷脂',
+            category: 'protein',
+            tags: { protein: '有蛋白質', p: '較高', k: '依種類而異', na: '依產品而異' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'moderate',
+            highPStatus: 'avoid',
+            warning: '手冊的晚期血磷異常高磷食物表包含魚卵、卵磷脂。',
+            tips: '血磷異常時避免或依營養師計畫限制；不要把一般雞蛋與魚卵視為完全相同的食物。',
+            sources: ['晚期血磷異常飲食原則']
+          },
+          {
+            id: 13,
+            name: '乾豆類／紅豆／綠豆／黑豆／蓮子／薏仁',
+            category: 'protein',
+            tags: { protein: '植物蛋白', p: '較高', k: '依種類而異', na: '低（未加工）' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'moderate',
+            highPStatus: 'avoid',
+            warning: '手冊在晚期血磷異常食物表中列入乾豆類、蓮子、薏仁等高磷食物；並非所有 CKD 階段一律禁食。',
+            tips: '若晚期且血磷異常，依營養師計畫限制份量；若只是一般 CKD，不應直接視為「劇毒」。',
+            sources: ['晚期血磷異常飲食原則']
+          },
+          {
+            id: 14,
+            name: '堅果類／花生／瓜子／腰果／核桃／杏仁／開心果',
+            category: 'protein',
+            tags: { protein: '植物蛋白＋脂肪', p: '較高', k: '依種類而異', na: '調味品可能偏高' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'moderate',
+            highPStatus: 'avoid',
+            warning: '手冊把多種堅果列為晚期血磷異常時需避免的高磷食物，也提醒部分堅果鉀含量需注意。',
+            tips: '血磷或血鉀異常時依營養師調整；不要把無鹽天然堅果與高鹽加工堅果混為一談。',
+            sources: ['晚期血磷異常飲食原則', '晚期血鉀異常飲食原則']
+          },
+          {
+            id: 15,
+            name: '菇類／黃豆芽／菜豆／四季豆／豌豆莢',
+            category: 'vegetable',
+            tags: { protein: '植物性蛋白', p: '依種類而異', k: '依種類而異', na: '低（未加工）' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'moderate',
+            highPStatus: 'moderate',
+            warning: '手冊指出部分菇類、芽菜類與豆莢類含較多低生物價蛋白質，晚期需要適量限制。',
+            tips: '可作配菜，但不要把大量菇類、豆芽或豆莢當成晚期低蛋白飲食的主要蛋白質來源。',
+            sources: ['腎臟病晚期飲食原則']
+          },
+          {
+            id: 16,
+            name: '一般新鮮蔬菜（高麗菜、大白菜、瓜類等）',
+            category: 'vegetable',
+            tags: { protein: '低', p: '通常較低', k: '依種類而異', na: '低（未加工）' },
+            baseStatus: 'preferred',
+            lateStatus: 'preferred',
+            highKStatus: 'moderate',
+            highPStatus: 'preferred',
+            warning: '手冊鼓勵適量蔬菜，並指出一般台灣飲食若已經炒熟且不喝菜汁，不需一律特別汆燙。',
+            tips: '血鉀過高時才需要依指南用滾水燙過撈起，再油炒或油拌；避免喝菜湯與生菜。',
+            sources: ['血鉀過高時飲食調整', '晚期血鉀異常飲食原則']
+          },
+          {
+            id: 17,
+            name: '高鉀蔬菜／高鉀食材（依個別食物而定）',
+            category: 'vegetable',
+            tags: { protein: '低', p: '依種類而異', k: '較高', na: '低（未加工）' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'avoid',
+            highPStatus: 'moderate',
+            warning: '只有在血鉀過高或醫囑限鉀時，才需要進一步降低高鉀蔬菜的份量。',
+            tips: '有高血鉀時，依指南採汆燙瀝乾＋油炒／油拌的方式；不要喝菜湯。',
+            sources: ['晚期血鉀異常飲食原則']
+          },
+          {
+            id: 18,
+            name: '醃漬蔬菜／榨菜／酸菜／泡菜／雪裡紅／梅干菜',
+            category: 'vegetable',
+            tags: { protein: '低', p: '依種類而異', k: '依種類而異', na: '高' },
+            baseStatus: 'avoid',
+            lateStatus: 'avoid',
+            highKStatus: 'avoid',
+            highPStatus: 'moderate',
+            warning: '手冊把醃漬蔬菜列為高鹽食物，不宜經常食用。',
+            tips: '外食可請店家不加酸菜、小菜或醃製配料。',
+            sources: ['減鹽小技巧']
+          },
+          {
+            id: 19,
+            name: '生菜沙拉／精力湯／蔬果汁',
+            category: 'vegetable',
+            tags: { protein: '低', p: '依食材而異', k: '液體濃縮後可能較高', na: '依產品而異' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'avoid',
+            highPStatus: 'moderate',
+            warning: '手冊在血鉀過高時明確建議避免生菜、精力湯與菜湯；並提醒某些排便保健或萃取精華可能含較多鉀。',
+            tips: '一般情境不必把所有生菜視為有毒；若高血鉀，依醫囑改熟食並避免精力湯、蔬果汁。',
+            sources: ['血鉀過高時飲食調整', '晚期血鉀異常飲食原則']
+          },
+          {
+            id: 20,
+            name: '蘋果／梨／葡萄／鳳梨／蓮霧等較低鉀水果',
+            category: 'fruit',
+            tags: { protein: '低', p: '低', k: '較低至中等', na: '低' },
+            baseStatus: 'preferred',
+            lateStatus: 'preferred',
+            highKStatus: 'moderate',
+            highPStatus: 'preferred',
+            warning: '手冊的高鉀水果表列出部分水果每份鉀低於 200 mg，可依營養師建議份量攝取。',
+            tips: '高血鉀時也不是完全不吃水果；重點是份量與整天總量，手冊提供一天約半斤、約兩個棒球大小的概念。',
+            sources: ['晚期血鉀異常飲食原則', '常見水果鉀含量']
+          },
+          {
+            id: 21,
+            name: '蕃茄／奇異果／哈密瓜／香瓜／草莓／火龍果／櫻桃',
+            category: 'fruit',
+            tags: { protein: '低', p: '低', k: '較高', na: '低' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'avoid',
+            highPStatus: 'preferred',
+            warning: '手冊在血鉀過高時列為鉀含量較多的水果，建議盡量少吃；不是所有 CKD 患者任何情況下都一律禁食。',
+            tips: '若血鉀正常，應以整體飲食與份量評估；若高血鉀，依醫師／營養師指示限制。',
+            sources: ['血鉀過高時飲食調整', '晚期血鉀異常飲食原則']
+          },
+          {
+            id: 22,
+            name: '香蕉／芭樂／柳丁／芒果／釋迦／木瓜等水果',
+            category: 'fruit',
+            tags: { protein: '低', p: '低', k: '中至較高，依份量而異', na: '低' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'moderate',
+            highPStatus: 'preferred',
+            warning: '水果的鉀含量與份量相關；手冊強調高血鉀時應依常見水果鉀含量表調整，不應把單一水果簡化為「吃一份就致命」。',
+            tips: '高血鉀時依水果份量表與營養師建議；楊桃則另列為腎臟病患者應避免。',
+            sources: ['晚期血鉀異常飲食原則', '常見水果鉀含量']
+          },
+          {
+            id: 23,
+            name: '水果乾／葡萄乾／龍眼乾／蜜餞',
+            category: 'fruit',
+            tags: { protein: '低', p: '依產品而異', k: '濃縮後較高', na: '蜜餞可能高' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'avoid',
+            highPStatus: 'moderate',
+            warning: '手冊指出水果乾在高血鉀時鉀離子含量高，需要避免；蜜餞同時常含較多鹽與糖。',
+            tips: '水果優先選新鮮水果；高血鉀時避免水果乾、蜜餞。',
+            sources: ['晚期血鉀異常飲食原則']
+          },
+          {
+            id: 24,
+            name: '純果汁／果菜汁／濃縮蔬果飲',
+            category: 'drink',
+            tags: { protein: '低', p: '依原料而異', k: '濃縮後較高', na: '依產品而異' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'avoid',
+            highPStatus: 'moderate',
+            warning: '手冊在血鉀過高時提醒純果汁與果菜汁的鉀離子含量高，應避免。',
+            tips: '需要控制鉀時以新鮮、定量水果取代濃縮果汁；不要把果汁當作「健康水」。',
+            sources: ['血鉀過高時飲食調整']
+          },
+          {
+            id: 25,
+            name: '高鈉調味料（胡椒鹽、豆瓣醬、辣椒醬、沙茶醬、番茄醬、味噌）',
+            category: 'seasoning',
+            tags: { protein: '依產品而異', p: '依產品而異', k: '依產品而異', na: '高' },
+            baseStatus: 'avoid',
+            lateStatus: 'avoid',
+            highKStatus: 'avoid',
+            highPStatus: 'moderate',
+            warning: '手冊建議減少鹽與醬油，並避免以胡椒鹽、番茄醬、辣椒醬、豆瓣醬、沙茶醬等增加重口味。',
+            tips: '多用蔥、薑、蒜、醋、檸檬汁等天然辛香料提味；醬料要少量。',
+            sources: ['清淡烹調', '減鹽小技巧']
+          },
+          {
+            id: 26,
+            name: '少量一般食鹽／一般醬油',
+            category: 'seasoning',
+            tags: { protein: '無', p: '低', k: '低', na: '有鈉，需控制' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'moderate',
+            highPStatus: 'moderate',
+            warning: '手冊的核心是「少鹽、減少醬油」，不是完全無鈉；清淡烹調仍可以保留適量調味。',
+            tips: '以新鮮食材搭配天然辛香料，減少鹽與醬油量；若需限鈉，參考包裝上的鈉含量。',
+            sources: ['不要吃太鹹，血壓要正常', '清淡烹調']
+          },
+          {
+            id: 27,
+            name: '橄欖油／芥花油／其他植物油',
+            category: 'seasoning',
+            tags: { protein: '無', p: '無', k: '低', na: '無' },
+            baseStatus: 'preferred',
+            lateStatus: 'preferred',
+            highKStatus: 'preferred',
+            highPStatus: 'preferred',
+            warning: '手冊指出晚期低蛋白飲食若熱量不足，應使用足夠油脂提供熱量，植物油或調和油都可。',
+            tips: '不要因「腎臟不好」而完全無油；油量仍要配合總熱量、體重與血脂狀況。',
+            sources: ['腎臟病晚期飲食熱量及食物份量']
+          },
+          {
+            id: 28,
+            name: '肥肉／雞皮／鴨皮／大量動物脂肪',
+            category: 'seasoning',
+            tags: { protein: '有', p: '依食物而異', k: '通常低', na: '依調味而異' },
+            baseStatus: 'avoid',
+            lateStatus: 'avoid',
+            highKStatus: 'avoid',
+            highPStatus: 'moderate',
+            warning: '手冊建議初期外食避免肥肉、雞皮、鴨皮、魚皮，並注意降低飽和脂肪與反式脂肪。',
+            tips: '優先瘦肉並去皮；不要用大量動物油補充晚期熱量。',
+            sources: ['慢性腎臟病患者的飲食調整', '慢性腎臟病初期外食']
+          },
+          {
+            id: 29,
+            name: '牛奶／羊奶／優格／乳酪／優酪乳／養樂多',
+            category: 'dairy',
+            tags: { protein: '高生物價', p: '較高', k: '中等', na: '依產品而異' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'moderate',
+            highPStatus: 'avoid',
+            warning: '手冊指出晚期血磷異常時，奶類與乳製品屬需要避免或限制的高磷食物。',
+            tips: '不是所有 CKD 患者都要自動戒奶；若晚期且血磷異常，依營養師安排替代或限制。',
+            sources: ['晚期血磷異常飲食原則']
+          },
+          {
+            id: 30,
+            name: '可樂／汽水／可可／巧克力',
+            category: 'drink',
+            tags: { protein: '低', p: '部分產品含磷添加物', k: '依產品而異', na: '依產品而異' },
+            baseStatus: 'avoid',
+            lateStatus: 'avoid',
+            highKStatus: 'moderate',
+            highPStatus: 'avoid',
+            warning: '手冊將可樂、汽水、可可與巧克力列入晚期血磷異常需要避免的食物；也不是理想日常飲料。',
+            tips: '平常以水為主；若限水，所有飲料都要算入水分總量。',
+            sources: ['晚期血磷異常飲食原則', '晚期限制水分原則']
+          },
+          {
+            id: 31,
+            name: '咖啡／雞精／人參精／運動飲料',
+            category: 'drink',
+            tags: { protein: '依產品而異', p: '依產品而異', k: '部分可能較高', na: '依產品而異' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'avoid',
+            highPStatus: 'moderate',
+            warning: '手冊在高血鉀情境下建議避免咖啡、雞精、人參精與運動飲料，並以白開水為較好的選擇。',
+            tips: '高血鉀時依醫囑避免；不要把保健飲料或精華類當成補腎品。',
+            sources: ['晚期血鉀異常飲食原則']
+          },
+          {
+            id: 32,
+            name: '大骨湯／雞湯／肉湯／火鍋湯／藥膳湯',
+            category: 'drink',
+            tags: { protein: '有溶出物', p: '依湯品而異', k: '可能較高', na: '常偏高' },
+            baseStatus: 'avoid',
+            lateStatus: 'avoid',
+            highKStatus: 'avoid',
+            highPStatus: 'avoid',
+            warning: '手冊指出湯汁容易帶入鉀與鹽；高血鉀或嚴格限水時尤其需要避免。晚期也不建議以濃湯增加熱量。',
+            tips: '外食可少喝湯；高血鉀時不要喝菜湯、肉湯、燉補湯或用肉汁拌飯。',
+            sources: ['血鉀過高時飲食調整', '晚期限制水分原則']
+          },
+          {
+            id: 33,
+            name: '羹麵／燴麵／燴飯／酸辣湯／勾芡料理',
+            category: 'drink',
+            tags: { protein: '依配料而異', p: '依配料而異', k: '依湯汁而異', na: '常偏高' },
+            baseStatus: 'moderate',
+            lateStatus: 'avoid',
+            highKStatus: 'avoid',
+            highPStatus: 'moderate',
+            warning: '手冊明確指出血鉀過高時不要吃勾芡食物，如燴飯、燴麵、酸辣湯、羹麵等。晚期外食時也較建議乾爽、清淡選擇。',
+            tips: '高血鉀時避免；一般 CKD 外食則控制湯汁與調味量。',
+            sources: ['晚期血鉀異常飲食原則', '晚期外食技巧']
+          },
+          {
+            id: 34,
+            name: '咖哩飯／即食調理包',
+            category: 'drink',
+            tags: { protein: '依配料而異', p: '依加工添加物而異', k: '依食材而異', na: '常偏高' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'avoid',
+            highPStatus: 'moderate',
+            warning: '手冊把咖哩飯列為血鉀過高時應避免的勾芡／濃汁型食物之一；調理包也常有較高鈉。',
+            tips: '高血鉀時避開濃汁與勾芡型料理；平常也應控制醬汁與加工量。',
+            sources: ['晚期血鉀異常飲食原則']
+          },
+          {
+            id: 35,
+            name: '甜點／糖／糖飴／粉飴／麥芽糊精',
+            category: 'calorie',
+            tags: { protein: '低或無', p: '低', k: '低', na: '低（未加工）' },
+            baseStatus: 'moderate',
+            lateStatus: 'preferred',
+            highKStatus: 'preferred',
+            highPStatus: 'preferred',
+            warning: '手冊在晚期熱量不足時，允許以糖類或葡萄糖聚合物補充熱量；但血糖控制不佳者需先諮詢醫療人員。',
+            tips: '不要把糖當成「越多越健康」；只有在需要補熱量的情境才作為工具。',
+            sources: ['腎臟病晚期飲食熱量及食物份量']
+          },
+          {
+            id: 36,
+            name: '腎臟病營養補充品（低蛋白／腎臟專用配方）',
+            category: 'calorie',
+            tags: { protein: '依配方', p: '依配方', k: '依配方', na: '依配方' },
+            baseStatus: 'moderate',
+            lateStatus: 'moderate',
+            highKStatus: 'moderate',
+            highPStatus: 'moderate',
+            warning: '手冊建議如果無法用一般食物補足熱量，可請教營養師選擇適合 CKD 的營養補充品。',
+            tips: '不要自行把一般高蛋白營養品當成腎臟病補品；應由營養師評估產品與份量。',
+            sources: ['腎臟病晚期飲食熱量及食物份量']
+          }
+        ]);
+
+        const contextEnabled = (key) => activeContexts.value.includes(key);
+
+        const toggleContext = (key) => {
+          if (activeContexts.value.includes(key)) {
+            activeContexts.value = activeContexts.value.filter(item => item !== key);
+          } else {
+            activeContexts.value = [...activeContexts.value, key];
+          }
+        };
+
+        const statusForFood = (food) => {
+          const rank = { preferred: 0, moderate: 1, avoid: 2 };
+          let statuses = [food.baseStatus];
+
+          if (selectedStage.value === 'late' && food.lateStatus) {
+            statuses.push(food.lateStatus);
+          }
+          if (activeContexts.value.includes('highP') && food.highPStatus) {
+            statuses.push(food.highPStatus);
+          }
+          if (activeContexts.value.includes('highK') && food.highKStatus) {
+            statuses.push(food.highKStatus);
+          }
+
+          return statuses.sort((a, b) => rank[b] - rank[a])[0];
+        };
+
+        const getStatusText = (status) => ({
+          preferred: '🟢 可選／優先',
+          moderate: '🟡 適量／注意',
+          avoid: '🔴 避免／限制'
+        }[status] || 'ℹ️ 參考');
+
+        const getStatusBadge = (status) => ({
+          preferred: 'bg-emerald-600 text-white',
+          moderate: 'bg-amber-400 text-slate-900',
+          avoid: 'bg-rose-600 text-white'
+        }[status] || 'bg-slate-200 text-slate-700');
+
+        const getStatusBorder = (status) => ({
+          preferred: 'border-l-4 border-l-emerald-500 border-slate-200',
+          moderate: 'border-l-4 border-l-amber-400 border-slate-200',
+          avoid: 'border-l-4 border-l-rose-500 border-slate-200'
+        }[status] || 'border-slate-200');
+
+        const profileSummary = computed(() => {
+          const parts = [
+            selectedStage.value === 'late'
+              ? '晚期 CKD：依手冊套用低蛋白、足夠熱量與晚期外食原則。'
+              : '一般／初期 CKD：以清淡、均衡、適量蛋白質與減少高鹽加工食品為主。'
+          ];
+          if (activeContexts.value.includes('highP')) parts.push('目前啟用「血磷異常」：標記手冊列出的高磷食物限制。');
+          if (activeContexts.value.includes('highK')) parts.push('目前啟用「血鉀過高」：套用手冊的低鉀、少喝湯與蔬菜烹調原則。');
+          if (activeContexts.value.includes('fluid')) parts.push('目前啟用「嚴格限水」：飲料、湯汁與流質食物需要計入每日水分。');
+          return parts.join(' ');
+        });
+
+        const resolvedWarning = (food) => {
+          if (food.id === 2 && activeContexts.value.includes('highK')) {
+            return '因為目前啟用高血鉀情境，這項調味品在本工具中列為避免；指南的理由是部分產品以鉀取代鈉。';
+          }
+          if (food.id === 17 && activeContexts.value.includes('highK')) {
+            return '因為目前啟用高血鉀情境，需降低高鉀蔬菜攝取，並依指南採汆燙後瀝乾，再以油炒或油拌。';
+          }
+          if (food.id === 22 && activeContexts.value.includes('highK')) {
+            return '因為目前啟用高血鉀情境，這類水果需要依份量與個人營養師建議調整，而不是一概視為完全禁食。';
+          }
+          return food.warning;
+        };
+
+        const resolvedTips = (food) => {
+          let tip = food.tips;
+          if (food.id === 32 && activeContexts.value.includes('fluid')) {
+            tip += ' 另因目前有嚴格限水情境，湯汁本身也要計入每日水分。';
+          }
+          return tip;
+        };
+
+        const filteredFoods = computed(() => {
+          const query = searchQuery.value.trim().toLowerCase();
+          return foods.value.filter(food => {
+            const status = statusForFood(food);
+            const searchable = [food.name, food.warning, food.tips, ...(food.sources || [])].join(' ').toLowerCase();
+            const matchesSearch = !query || searchable.includes(query);
+            const matchesStatus = selectedStatus.value === 'all' || status === selectedStatus.value;
+            const matchesCategory = selectedCategory.value === 'all' || food.category === selectedCategory.value;
+            return matchesSearch && matchesStatus && matchesCategory;
+          });
+        });
+
+        const getCategoryLabel = (cat) => {
+          const found = categories.find(c => c.value === cat);
+          return found ? found.label : '';
+        };
+
+        const resetProfile = () => {
+          activeContexts.value = [];
+        };
+
+        const resetFilters = () => {
+          searchQuery.value = '';
+          selectedStatus.value = 'all';
+          selectedCategory.value = 'all';
+        };
+
+        const hasAnyFilter = computed(() => {
+          return !!searchQuery.value || selectedStatus.value !== 'all' || selectedCategory.value !== 'all';
+        });
+
+        return {
+          searchQuery,
+          selectedStatus,
+          selectedCategory,
+          selectedStage,
+          stages,
+          extraContexts,
+          categories,
+          statusTabs,
+          foods,
+          filteredFoods,
+          hasAnyFilter,
+          profileSummary,
+          contextEnabled,
+          toggleContext,
+          resetProfile,
+          resetFilters,
+          statusForFood,
+          getStatusText,
+          getStatusBadge,
+          getStatusBorder,
+          getCategoryLabel,
+          resolvedWarning,
+          resolvedTips
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
